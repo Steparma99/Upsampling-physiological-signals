@@ -1,0 +1,25 @@
+{
+  "config": "C:\\Users\\Stefano\\OneDrive - MADE S.C.A R.L\\Documenti\\PERSONALE\\UPSAMPLING\\Upsampling-physiological-signals\\phase1_dataset_preparation\\config\\config.yaml",
+  "dry_run": true,
+  "datasets_processed": [
+    "ptbxl"
+  ],
+  "output_files": {
+    "train": "C:\\Users\\Stefano\\OneDrive - MADE S.C.A R.L\\Documenti\\PERSONALE\\UPSAMPLING\\Upsampling-physiological-signals\\phase1_dataset_preparation\\data\\processed\\train.h5",
+    "val": "C:\\Users\\Stefano\\OneDrive - MADE S.C.A R.L\\Documenti\\PERSONALE\\UPSAMPLING\\Upsampling-physiological-signals\\phase1_dataset_preparation\\data\\processed\\val.h5",
+    "test": "C:\\Users\\Stefano\\OneDrive - MADE S.C.A R.L\\Documenti\\PERSONALE\\UPSAMPLING\\Upsampling-physiological-signals\\phase1_dataset_preparation\\data\\processed\\test.h5"
+  },
+  "window_counts": {
+    "train": 16,
+    "val": 2,
+    "test": 2
+  },
+  "pipeline_stats": {
+    "total": 20,
+    "accepted": 20,
+    "rejected_saturation": 0,
+    "rejected_variance": 0,
+    "rejected_sqi": 0,
+    "rejected_rmssd": 0
+  }
+}

@@ -1,0 +1,12 @@
+numpy>=1.24
+scipy>=1.10
+wfdb>=4.1
+h5py>=3.8
+tqdm>=4.65
+pyyaml>=6.0
+pandas>=2.0
+matplotlib>=3.7
+
+# Phase 2 — pre-training
+torch>=2.2
+omegaconf>=2.3

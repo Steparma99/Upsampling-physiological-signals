@@ -1,0 +1,76 @@
+# --- Dati ---
+data:
+  l_lr: 1000          # lunghezza sequenza LR (campioni)
+  l_hr: 5000          # lunghezza sequenza HR (campioni)
+  f_dim: 13           # dimensione vettore fisiologico
+  patch_len: 50       # lunghezza patch MAE (campioni LR)
+  num_patches: 20     # l_lr / patch_len
+
+# --- Encoder ---
+encoder:
+  d_model: 256
+  # CNN
+  cnn_kernel_sizes: [3, 7, 15]   # multi-scale, rami paralleli
+  cnn_num_blocks: 4
+  cnn_dropout: 0.1
+  # Transformer
+  tf_num_layers: 6
+  tf_num_heads: 8
+  tf_d_ff: 1024        # 4 * d_model
+  tf_dropout: 0.1
+  tf_max_seq_len: 1024 # >= num_patches + 1 (token fisiologico)
+
+# --- Physio Projector ---
+physio_projector:
+  hidden_dim: 64       # f_dim -> hidden_dim -> d_model
+
+# --- Contrastive learning ---
+contrastive:
+  projection_head_dims: [256, 128, 64]  # d_model -> 128 -> 64
+  temperature: 0.07
+  batch_size: 256
+
+# --- MAE ---
+mae:
+  mask_ratio: 0.40
+  rhythm_aware_mask: true
+  mask_weight_qrs: 2.0   # probabilità relativa per patch contenenti QRS
+  decoder_num_layers: 4
+  decoder_d_model: 128
+  decoder_num_heads: 4
+  lambda_fft: 0.1         # peso loss spettrale
+
+# --- Loss combinata ---
+loss:
+  lambda_cl: 1.0
+  lambda_mae: 0.5
+
+# --- Ottimizzatore ---
+optimizer:
+  type: adamw
+  lr: 3.0e-4
+  weight_decay: 0.05
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  grad_clip: 1.0
+
+# --- Schedule ---
+scheduler:
+  warmup_epochs: 10
+  total_epochs: 200
+  min_lr: 1.0e-6
+
+# --- Curriculum ---
+curriculum:
+  phase_A_epochs: 50       # MAE only, mask_ratio=0.25, solo PTB-XL native
+  phase_B_epochs: 150      # MAE + CL, mask_ratio=0.40, tutti i dataset
+  phase_C_epochs: 200      # MAE rhythm-aware + hard negatives
+
+# --- Mixed precision ---
+amp: true
+
+# --- Checkpoint ---
+checkpoint:
+  save_every: 10      # epoche
+  keep_last: 3
+  output_dir: "checkpoints/phase2"

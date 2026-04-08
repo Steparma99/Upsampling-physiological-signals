@@ -1,0 +1,99 @@
+# ============================================================
+# Phase 1 — Dataset Construction Configuration
+# ECG Upsampling: 100 Hz → 500 Hz (×5)
+# ============================================================
+
+# --- Sampling frequencies ---
+fs_hr: 500          # Target high-resolution frequency (Hz)
+fs_lr: 100          # Target low-resolution frequency (Hz)
+upsample_factor: 5  # R = fs_hr / fs_lr
+
+# --- Anti-aliasing FIR filter (Kaiser window, Stage F) ---
+filter:
+  stopband_attenuation_db: 80.0   # A_s ≥ 80 dB
+  kaiser_beta: 7.857              # β = 0.1102 × (80 − 8.7)
+  # Normalized cutoff: fc = (fs_lr/2) / fs_hr = 50/500 = 0.1
+  # Transition width (normalized) used for automatic order estimation
+  transition_width_normalized: 0.02
+
+# --- Composite noise model (Stage N) ---
+noise:
+  snr_db_range: [25.0, 45.0]       # SNR_dB ~ U(25, 45) dB for thermal noise
+  powerline_freq: 50.0              # Powerline frequency (Hz) — European standard
+  powerline_amp_range: [0.0, 0.05] # Amplitude ~ U(0, 0.05) × σ_x
+  baseline_wander:
+    n_components: 3                 # Number of BW sinusoids
+    freq_range: [0.05, 0.8]        # f_k ~ U(0.05, 0.8) Hz
+    amp_range: [0.0, 0.1]          # A_k ~ U(0, 0.1) × σ_x
+
+# --- ADC quantization (Stage Q) ---
+quantization:
+  enabled: true
+  bits: 12                         # 12-bit ADC
+  voltage_range: [-5.0, 5.0]      # [V_min, V_max] in mV
+  # Δ = 10 mV / (2^12 - 1) ≈ 2.44 μV
+
+# --- Segmentation ---
+segmentation:
+  window_duration_s: 10.0          # T_w = 10 s
+  overlap_ratio: 0.5               # 50% overlap → stride = 5 s
+  # L_HR = 10 × 500 = 5000 samples
+  # L_LR = 10 × 100 = 1000 samples
+
+# --- Artifact rejection thresholds ---
+artifact_rejection:
+  saturation_zscore: 5.0           # τ_sat: z-score threshold for clipping detection
+  saturation_max_fraction: 0.03    # max fraction of samples above τ_sat (3 %)
+                                   # 10 beats × ~8 samples/peak ≈ 1.6 % for normal ECG
+                                   # real ADC clipping saturates 5-10 % of the window
+  min_std_mv: 0.05                 # σ_min: reject flat signals (mV)
+  max_std_mv: 5.0                  # σ_max: reject explosive signals (mV)
+  sqi_threshold: 0.80              # τ_SQI: minimum ECG band power ratio
+  sqi_ecg_band: [0.5, 45.0]       # B_ECG frequency band (Hz)
+  rmssd_threshold_ms: 300.0        # τ_RR: max RMSSD of successive RR diffs (ms)
+
+# --- Train / val / test split ---
+split:
+  train_ratio: 0.80
+  val_ratio: 0.10
+  test_ratio: 0.10
+  random_seed: 42
+
+# --- I/O paths (relative to phase1_dataset_preparation/) ---
+paths:
+  raw_data: data/raw
+  processed_data: data/processed
+
+# --- Dataset-specific settings ---
+datasets:
+
+  ptbxl:
+    enabled: true
+    fs: 500
+    role: supervised          # Builds (x_LR, x_HR) pairs
+    leads: [0, 1]             # Lead I (index 0) and Lead II (index 1)
+    # Absolute path to the downloaded PTB-XL root (overrides data/raw/ptbxl/).
+    # Set to null to fall back to the default: {raw_data}/ptbxl/
+    data_dir: "C:/Users/Stefano/OneDrive - MADE S.C.A R.L/Documenti/PERSONALE/UPSAMPLING/Upsampling-physiological-signals/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3"
+
+  ptb_diagnostic:
+    enabled: true
+    fs: 1000
+    role: supervised          # Resampled 1000→500 Hz as x_HR ground truth
+    leads: [0, 1]
+    # Expected path: data/raw/ptb_diagnostic/
+
+  mitbih:
+    enabled: true
+    fs: 360
+    role: pretraining         # Pseudo-pairs only (fs < fs_hr); unsupervised use
+    leads: [0, 1]
+    # Expected path: data/raw/mitbih/
+    # fs_lr_pseudo = 72 Hz (360/5)
+
+  cpsc2018:
+    enabled: true
+    fs: 500
+    role: supervised
+    leads: [0, 1]
+    # Expected path: data/raw/cpsc2018/
