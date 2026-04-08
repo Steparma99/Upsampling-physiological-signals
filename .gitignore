@@ -1,0 +1,19 @@
+# All the useless files
+
+# Ignore Claude's internal files (if any accidentally end up here)
+.claude/
+
+# Ignore VSCode workspace settings and extensions
+.vscode/
+
+# Ignore the raw PTB-XL dataset directory
+ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3/
+
+# Ignore the UPSAMPLING virtual environment directory
+UPSAMPLING/
+
+# Ignore the Claude project instructions file
+CLAUDE.md
+
+# Ignore the structural review document
+STRUCTURAL_REVIEW.md
