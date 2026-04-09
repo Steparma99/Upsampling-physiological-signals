@@ -1,6 +1,6 @@
 # All the useless files
 
-# Ignore Claude's internal files (if any accidentally end up here)
+# Ignore Claude's internal files
 .claude/
 
 # Ignore VSCode workspace settings and extensions

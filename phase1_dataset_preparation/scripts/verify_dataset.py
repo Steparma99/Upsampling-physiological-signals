@@ -25,7 +25,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 # Ensure Unicode output works on Windows terminals (cp1252 → utf-8)
 if hasattr(sys.stdout, "reconfigure"):
@@ -142,7 +142,9 @@ def plot_signal_examples(
 
     with h5py.File(h5_path, "r") as f:
         n = f["x_hr"].shape[0]
-        indices = np.random.default_rng(0).choice(n, size=min(n_examples, n), replace=False)
+        indices = np.sort(
+            np.random.default_rng(0).choice(n, size=min(n_examples, n), replace=False)
+        )
         x_hr_all = f["x_hr"][indices]
         x_lr_all = f["x_lr"][indices]
         r_peaks_all = [f["r_peaks"][i] for i in indices]
@@ -308,6 +310,190 @@ def plot_rejection_rates(stats_json_path: Path, plot_dir: Path) -> None:
     logger.info("Saved: %s", out_path)
 
 
+def evaluate_dataset_health(
+    all_stats: Dict[str, dict],
+    pipeline_stats_path: Path,
+) -> dict:
+    """Evaluate whether the generated dataset looks usable."""
+    supervised_splits = ("train", "val", "test")
+    missing_splits = [split for split in supervised_splits if split not in all_stats]
+    empty_splits = [
+        split for split in supervised_splits
+        if all_stats.get(split, {}).get("n_windows", 0) <= 0
+    ]
+
+    pipeline_stats = {}
+    acceptance_rate = None
+    if pipeline_stats_path.exists():
+        with open(pipeline_stats_path) as f:
+            pipeline_stats = json.load(f).get("pipeline_stats", {})
+        total = pipeline_stats.get("total", 0)
+        accepted = pipeline_stats.get("accepted", 0)
+        if total > 0:
+            acceptance_rate = accepted / total
+
+    checks = {
+        "all_supervised_splits_present": not missing_splits,
+        "all_supervised_splits_non_empty": not empty_splits,
+        "train_larger_than_val": (
+            all_stats.get("train", {}).get("n_windows", 0)
+            >= all_stats.get("val", {}).get("n_windows", 0)
+        ),
+        "train_larger_than_test": (
+            all_stats.get("train", {}).get("n_windows", 0)
+            >= all_stats.get("test", {}).get("n_windows", 0)
+        ),
+        "acceptance_rate_reasonable": acceptance_rate is None or acceptance_rate >= 0.05,
+    }
+
+    issues = []
+    if missing_splits:
+        issues.append(f"Missing supervised split files: {', '.join(missing_splits)}")
+    if empty_splits:
+        issues.append(f"Empty supervised split files: {', '.join(empty_splits)}")
+    if acceptance_rate is not None and acceptance_rate < 0.05:
+        issues.append(
+            f"Very low acceptance rate: {acceptance_rate * 100:.2f}% "
+            "(possible issue in preprocessing or artifact rejection)"
+        )
+
+    success = all(checks.values())
+    return {
+        "success": success,
+        "checks": checks,
+        "issues": issues,
+        "acceptance_rate": acceptance_rate,
+        "pipeline_stats": pipeline_stats,
+    }
+
+
+def write_verification_report(summary: dict, report_path: Path) -> None:
+    """Write a human-readable verification report to disk."""
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    health = summary["health"]
+    status = "SUCCESS" if health["success"] else "WARNING"
+
+    lines = [
+        "Phase 1 Verification Report",
+        "=" * 80,
+        f"Status: {status}",
+        f"Data directory: {summary['data_dir']}",
+        "",
+        "Split summary:",
+    ]
+
+    for split_name, stats in summary["splits"].items():
+        hr = stats.get("heart_rate_est_bpm")
+        hr_str = f"{hr:.1f} bpm" if hr is not None else "n/a"
+        lines.append(
+            f"- {split_name}: {stats.get('n_windows', 0):,} windows, "
+            f"{stats.get('n_unique_records', 0)} records, "
+            f"x_HR std={stats.get('x_hr_std', float('nan')):.3f}, "
+            f"heart-rate={hr_str}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "Checks:",
+        ]
+    )
+    for check_name, value in health["checks"].items():
+        lines.append(f"- {check_name}: {'OK' if value else 'FAIL'}")
+
+    if health["acceptance_rate"] is not None:
+        lines.append(
+            f"- acceptance_rate: {health['acceptance_rate'] * 100:.2f}%"
+        )
+
+    if health["issues"]:
+        lines.extend(
+            [
+                "",
+                "Issues detected:",
+            ]
+        )
+        for issue in health["issues"]:
+            lines.append(f"- {issue}")
+
+    if summary.get("plot_dir"):
+        lines.extend(
+            [
+                "",
+                f"Plots: {summary['plot_dir']}",
+            ]
+        )
+
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    logger.info("Saved: %s", report_path)
+
+
+def run_verification(data_dir: Path, generate_plots: bool = True) -> dict:
+    """Run dataset verification, optionally generating plots, and save reports."""
+    if not data_dir.exists():
+        raise FileNotFoundError(f"Data directory not found: {data_dir}")
+
+    plot_dir = data_dir / "plots" if generate_plots else None
+    if plot_dir is not None:
+        plot_dir.mkdir(exist_ok=True)
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    all_stats = {}
+
+    for split_name in ("train", "val", "test"):
+        h5_path = data_dir / f"{split_name}.h5"
+        stats = print_split_stats(h5_path)
+        if stats:
+            all_stats[split_name] = stats
+            if plot_dir is not None:
+                plot_signal_examples(h5_path, plot_dir)
+                plot_noise_spectra(h5_path, plot_dir)
+
+    pretrain_path = data_dir / "mitbih_pretrain.h5"
+    stats = print_split_stats(pretrain_path)
+    if stats:
+        all_stats["mitbih_pretrain"] = stats
+
+    pipeline_stats_path = data_dir / "pipeline_stats.json"
+    if plot_dir is not None:
+        plot_filter_response(plot_dir)
+        plot_rejection_rates(pipeline_stats_path, plot_dir)
+
+    print(f"\n{'='*60}")
+    print("  SUMMARY")
+    print(f"{'='*60}")
+    total_windows = sum(s.get("n_windows", 0) for s in all_stats.values())
+    print(f"  Total windows across all splits : {total_windows:,}")
+    for split, s in all_stats.items():
+        print(f"  {split:<20s} : {s.get('n_windows', 0):>10,} windows")
+    print()
+
+    health = evaluate_dataset_health(all_stats, pipeline_stats_path)
+    print(f"  Verification status      : {'SUCCESS' if health['success'] else 'WARNING'}")
+    if health["acceptance_rate"] is not None:
+        print(f"  Acceptance rate          : {health['acceptance_rate'] * 100:.2f}%")
+    if health["issues"]:
+        print("  Issues:")
+        for issue in health["issues"]:
+            print(f"    - {issue}")
+    print()
+
+    summary = {
+        "data_dir": str(data_dir.resolve()),
+        "plot_dir": str(plot_dir.resolve()) if plot_dir is not None else None,
+        "splits": all_stats,
+        "health": health,
+    }
+    json_path = data_dir / "verification_summary.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
+    logger.info("Saved: %s", json_path)
+
+    report_path = data_dir / "verification_report.txt"
+    write_verification_report(summary, report_path)
+    return summary
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -330,50 +516,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     data_dir = Path(args.data_dir)
-
-    if not data_dir.exists():
-        logger.error("Data directory not found: %s", data_dir)
+    try:
+        run_verification(data_dir, generate_plots=not args.no_plots)
+    except FileNotFoundError as exc:
+        logger.error("%s", exc)
         sys.exit(1)
-
-    plot_dir = data_dir / "plots"
-    if not args.no_plots:
-        plot_dir.mkdir(exist_ok=True)
-        # Ensure src is importable
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-    all_stats = {}
-
-    # Inspect supervised splits
-    for split_name in ("train", "val", "test"):
-        h5_path = data_dir / f"{split_name}.h5"
-        stats = print_split_stats(h5_path)
-        if stats:
-            all_stats[split_name] = stats
-            if not args.no_plots:
-                plot_signal_examples(h5_path, plot_dir)
-                plot_noise_spectra(h5_path, plot_dir)
-
-    # Inspect pretraining split
-    pretrain_path = data_dir / "mitbih_pretrain.h5"
-    stats = print_split_stats(pretrain_path)
-    if stats:
-        all_stats["mitbih_pretrain"] = stats
-
-    # Global diagnostics
-    if not args.no_plots:
-        plot_filter_response(plot_dir)
-        stats_json = data_dir / "pipeline_stats.json"
-        plot_rejection_rates(stats_json, plot_dir)
-
-    # Summary
-    print(f"\n{'='*60}")
-    print("  SUMMARY")
-    print(f"{'='*60}")
-    total_windows = sum(s.get("n_windows", 0) for s in all_stats.values())
-    print(f"  Total windows across all splits : {total_windows:,}")
-    for split, s in all_stats.items():
-        print(f"  {split:<20s} : {s.get('n_windows', 0):>10,} windows")
-    print()
 
 
 if __name__ == "__main__":

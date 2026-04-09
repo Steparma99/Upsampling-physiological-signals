@@ -58,6 +58,7 @@ from src.loaders import (
     PTBDiagnosticLoader,
     PTBXLLoader,
 )
+from scripts.verify_dataset import run_verification
 
 logging.basicConfig(
     level=logging.INFO,
@@ -234,6 +235,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Process only first 10 records per dataset",
     )
+    parser.add_argument(
+        "--skip_verification",
+        action="store_true",
+        help="Skip the automatic verification report and plots at the end",
+    )
     return parser.parse_args()
 
 
@@ -314,6 +320,22 @@ def main() -> None:
     with open(stats_path, "w") as f:
         json.dump(stats_out, f, indent=2)
     logger.info("Pipeline stats → %s", stats_path)
+
+    if args.skip_verification:
+        logger.info("Automatic verification skipped (--skip_verification).")
+    else:
+        logger.info("=" * 55)
+        logger.info("Running automatic post-build verification ...")
+        verification = run_verification(output_dir, generate_plots=True)
+        logger.info(
+            "Verification status → %s",
+            "SUCCESS" if verification["health"]["success"] else "WARNING",
+        )
+        logger.info("Verification report → %s", output_dir / "verification_report.txt")
+        logger.info("Verification summary → %s", output_dir / "verification_summary.json")
+        if verification["plot_dir"]:
+            logger.info("Verification plots → %s", verification["plot_dir"])
+
     logger.info("Phase 1 complete.")
 
 

@@ -1,0 +1,83 @@
+{
+  "data_dir": "C:\\Users\\Stefano\\OneDrive - MADE S.C.A R.L\\Documenti\\PERSONALE\\UPSAMPLING\\Upsampling-physiological-signals\\phase1_dataset_preparation\\data\\processed",
+  "plot_dir": "C:\\Users\\Stefano\\OneDrive - MADE S.C.A R.L\\Documenti\\PERSONALE\\UPSAMPLING\\Upsampling-physiological-signals\\phase1_dataset_preparation\\data\\processed\\plots",
+  "splits": {
+    "train": {
+      "file": "phase1_dataset_preparation\\data\\processed\\train.h5",
+      "n_windows": 16,
+      "L_HR": 5000,
+      "L_LR": 1000,
+      "fs_hr": 500,
+      "fs_lr": 100,
+      "n_unique_records": 16,
+      "x_hr_mean": 7.629394338515283e-10,
+      "x_hr_std": 0.9998999834060669,
+      "x_lr_mean": -0.000906950852368027,
+      "x_lr_std": 0.9924158453941345,
+      "sigma_w_mean_mv": 0.1849591276089761,
+      "sigma_w_p5_mv": 0.09045846329597183,
+      "sigma_w_p95_mv": 0.36223876157770596,
+      "rr_mean_ms": 895.1518987341772,
+      "rr_std_ms": 142.54473769041863,
+      "heart_rate_est_bpm": 67.02773024873792
+    },
+    "val": {
+      "file": "phase1_dataset_preparation\\data\\processed\\val.h5",
+      "n_windows": 2,
+      "L_HR": 5000,
+      "L_LR": 1000,
+      "fs_hr": 500,
+      "fs_lr": 100,
+      "n_unique_records": 2,
+      "x_hr_mean": -7.629394893626795e-09,
+      "x_hr_std": 0.9998999834060669,
+      "x_lr_mean": 0.0027395763900130987,
+      "x_lr_std": 0.9982563257217407,
+      "sigma_w_mean_mv": 0.10085638184383543,
+      "sigma_w_p5_mv": 0.08921006099938776,
+      "sigma_w_p95_mv": 0.1125027026882831,
+      "rr_mean_ms": 984.6666666666666,
+      "rr_std_ms": 36.03085097832442,
+      "heart_rate_est_bpm": 60.93432633716994
+    },
+    "test": {
+      "file": "phase1_dataset_preparation\\data\\processed\\test.h5",
+      "n_windows": 2,
+      "L_HR": 5000,
+      "L_LR": 1000,
+      "fs_hr": 500,
+      "fs_lr": 100,
+      "n_unique_records": 2,
+      "x_hr_mean": -9.155273872352154e-09,
+      "x_hr_std": 0.9998999834060669,
+      "x_lr_mean": -0.001914028194732964,
+      "x_lr_std": 0.9925373792648315,
+      "sigma_w_mean_mv": 0.09875522066810931,
+      "sigma_w_p5_mv": 0.08724610325634526,
+      "sigma_w_p95_mv": 0.11026433807987336,
+      "rr_mean_ms": 938.4,
+      "rr_std_ms": 15.43502510525979,
+      "heart_rate_est_bpm": 63.9386189258312
+    }
+  },
+  "health": {
+    "success": true,
+    "checks": {
+      "all_supervised_splits_present": true,
+      "all_supervised_splits_non_empty": true,
+      "train_larger_than_val": true,
+      "train_larger_than_test": true,
+      "acceptance_rate_reasonable": true
+    },
+    "issues": [],
+    "acceptance_rate": 1.0,
+    "pipeline_stats": {
+      "total": 20,
+      "accepted": 20,
+      "rejected_saturation": 0,
+      "rejected_variance": 0,
+      "rejected_sqi": 0,
+      "rejected_rmssd": 0
+    }
+  }
+}

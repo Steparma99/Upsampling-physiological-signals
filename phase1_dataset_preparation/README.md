@@ -165,7 +165,14 @@ python scripts/run_phase1.py --config config/config.yaml
 #   --datasets          Comma-separated list of datasets to process (default: all enabled)
 #   --output_dir DIR    Override output directory
 #   --dry_run           Process first 10 records only (for testing)
+#   --skip_verification Skip automatic post-build verification
 ```
+
+At the end of the run, Phase 1 now automatically:
+- prints a verification summary in the terminal
+- saves diagnostic plots to `data/processed/plots/`
+- saves `verification_summary.json`
+- saves `verification_report.txt`
 
 ### Sanity Check
 
