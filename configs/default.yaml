@@ -1,0 +1,211 @@
+# configs/default.yaml — All hyperparameters for the ECG super-resolution pipeline.
+#
+# Physical constants (FS_HR, FS_LR, L_HR, L_LR, UPSAMPLE_RATIO) are NOT here.
+# They are physical properties of the problem and live in src/data/preprocessing.py.
+#
+# This file is loaded via OmegaConf. Access in code:
+#   from omegaconf import OmegaConf
+#   cfg = OmegaConf.load("configs/default.yaml")
+
+
+# ── Data ────────────────────────────────────────────────────────────────────
+
+data:
+  # Metadata dropout: with probability p_drop_meta the ENTIRE f_meta vector is
+  # zeroed jointly during training, forcing the network to be robust to missing
+  # metadata at inference time. Applied all-or-nothing (never per-feature).
+  # Set to 0.0 at inference — the Dataset default is already 0.0.
+  p_drop_meta: 0.3
+
+  channel: 0               # ECG lead index to load (0 = Lead I for PTB-XL)
+  num_workers: 4           # DataLoader worker processes
+  pin_memory: true         # Faster CPU→GPU transfer
+  drop_last: true          # Drop incomplete final batch
+
+
+# ── Model ───────────────────────────────────────────────────────────────────
+
+model:
+  # Total conditioning embedding dimension = f_signal_emb + f_meta_emb (Eq. 11 PDF)
+  d_model: 256
+
+  # Feature projection MLPs — independent for f_signal and f_meta (Eq. 9-10 PDF)
+  # f_signal: W1 ∈ R^(64×12), W2 ∈ R^(192×64)  → output 192 dim
+  # f_meta:   W1 ∈ R^(32×7),  W2 ∈ R^(64×32)   → output  64 dim
+  f_signal_mlp:
+    input_dim: 12          # F_SIGNAL_DIM — must match features.py
+    hidden_dim: 64
+    output_dim: 192
+
+  f_meta_mlp:
+    input_dim: 7           # F_META_DIM — must match features.py
+    hidden_dim: 32
+    output_dim: 64
+
+  # Multi-scale CNN encoder
+  # Input: X_in = (B, 2, L_LR) = [x_LR, d_map]
+  # Initial conv: (B, 2, 1000) → (B, d_model, 1000)
+  encoder:
+    n_residual_blocks: 4
+    kernel_sizes: [3, 7, 15]   # small / medium / large parallel branches
+    patch_len: 50              # patchification stride → P = L_LR / patch_len = 20 patches
+                               # ASSUMES L_LR=1000 (100 Hz × 10 s). If FS_LR changes in
+                               # preprocessing.py, update patch_len and stage_factors accordingly.
+
+  # Transformer encoder
+  # Sequence: [f_emb (pos 0), patch_1, ..., patch_P] → length P+1 = 21
+  transformer:
+    n_layers: 6
+    n_heads: 8               # d_model / n_heads = 256/8 = 32 per head
+    ffn_multiplier: 4        # FFN hidden dim = d_model * ffn_multiplier
+    dropout: 0.1
+    attn_dropout: 0.0
+
+  # U-Net decoder (Phase B only)
+  # 4-stage SubPixel upsampling: 20 patches → 5000 HR samples (×250 total)
+  # No transposed convolutions — pixel shuffle only (CLAUDE.md constraint #7)
+  decoder:
+    base_channels: 64            # output channels at stage 4 (widest temporal resolution)
+    # Per-stage temporal upscale factors — product × P (20) must equal N_HR (5000)
+    # 5 × 5 × 2 × 5 × 20 = 5000 ✓
+    # ASSUMES P=20 (from patch_len=50) and N_HR=5000 (500 Hz × 10 s).
+    stage_factors: [5, 5, 2, 5]
+    n_film_stages: 3             # FiLM applied to first n stages (stages 1-3, not stage 4)
+    # Skip connection from CNN encoder → decoder Stage 3.
+    # All CNN residual blocks output at (B, d_model, N_LR=1000). Stage 3 is the ONLY
+    # decoder stage whose output temporal resolution matches N_LR (500→1000 samples),
+    # so skip connections naturally connect here without any resampling.
+    # Value 3 = last CNN block (0-based), which carries the richest contextual features.
+    # To use multi-scale skips from all CNN blocks at Stage 3, change to a list:
+    #   skip_layer_indices: [0, 1, 2, 3]  (requires decoder code to handle concatenation)
+    skip_layer_index: 3
+
+  # PatchGAN discriminator (Phase B only)
+  # No sigmoid — hinge loss (CLAUDE.md constraint #6)
+  # Dimensions verified: 5000 → 1250 → 312 → 78 (per-patch output)
+  # padding=6 yields exact spec dimensions for all three strided layers
+  discriminator:
+    channels: [64, 128, 256]   # intermediate channel widths (input is always 1)
+    kernel_size: 15             # strided conv kernel size
+    stride: 4                   # temporal stride per strided layer
+    padding: 6                  # padding for strided layers
+    leaky_slope: 0.2            # LeakyReLU negative slope
+    head_kernel_size: 7         # output conv kernel (k=7, pad=3 keeps length=78)
+
+
+# ── Phase A — Self-supervised pre-training ──────────────────────────────────
+
+phase_a:
+  batch_size: 256
+  epochs: 100
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  warmup_epochs: 5
+
+  # SimCLR / NT-Xent contrastive loss
+  # L2 normalisation is applied INSIDE the loss, not as a model layer (constraint #3)
+  # NOTE on temperature: 0.07 is calibrated for large batches (≥4096, e.g. SimCLR on ImageNet).
+  # With batch_size=64 (63 negatives), the loss becomes highly sensitive to hard negatives.
+  # Recommended range for ECG with small batches: 0.10–0.15 (see CLOCS, CPC-ECG literature).
+  # If batch_size is increased to ≥128, 0.07 becomes more appropriate.
+  simclr:
+    temperature: 0.07
+    projection_hidden_dim: 128
+    projection_output_dim: 64
+
+  # Phase A total loss weights — L_pretrain = λ_ntxent × L_NT-Xent + λ_mae × L_MAE
+  loss_weights:
+    ntxent: 1.0
+    mae: 0.5
+
+  # MAE masked auto-encoder loss
+  # Position 0 (f_emb CLS token) is NEVER masked (constraint #2)
+  mae:
+    masking_ratio: 0.400
+    # Rhythm-aware masking: QRS patches have higher masking probability
+    qrs_masking_boost: 2.0   # multiplier applied to QRS-aligned patches
+    decoder_hidden_dim: 128
+    decoder_n_layers: 4
+    decoder_n_heads: 4         # 128 / 4 = 32 per head (same head size as main encoder)
+    # MAE loss = MSE on target patch z-score + weight * FFT component (constraint #4)
+    # Patch normalisation uses TARGET (source) statistics — never prediction statistics
+    fft_loss_weight: 0.1
+
+
+# ── Phase B — Supervised fine-tuning ────────────────────────────────────────
+
+phase_b:
+  batch_size: 32
+  epochs: 150
+
+  # Layer-wise LR decay: deeper encoder layers get lower LR (progressive unfreeze)
+  learning_rate_generator: 1.0e-4
+  learning_rate_discriminator: 1.0e-4
+  lr_layer_decay: 0.8        # multiply LR by this factor per encoder layer from top
+  weight_decay: 1.0e-4
+
+  # Encoder transfer from Phase A
+  encoder_freeze_epochs: 20  # freeze encoder for first N epochs; then progressive unfreeze
+
+  # Discriminator warmup: adversarial loss is NOT activated until after warmup (constraint #6).
+  # Aligned with encoder_freeze_epochs=20: both the encoder unfreezes and the adversarial loss
+  # activates at the same epoch, so GAN gradients always flow through a fully trainable generator.
+  discriminator_warmup_epochs: 20
+
+  # Generator total loss weights — L_G = Σ λ_i × L_i  (Eq. 62)
+  # L_G = 10×L1 + 1×FFT + 1×MSTFT + 5×Lmorph + 1×Ladv + 2×LFM
+  loss_weights:
+    l1: 10.0                 # dominant — primary task is faithful reconstruction
+    fft: 1.0                 # forces high-frequency synthesis above LR Nyquist
+    stft: 1.0                # multi-scale STFT (multiple window lengths)
+    morphological: 5.0       # PQRST landmark MSE (skipped when annotations = None)
+    adversarial: 1.0         # hinge loss generator term
+    feature_matching: 2.0    # L1 on intermediate discriminator features
+
+  # Multi-scale STFT window lengths (in HR samples at 500 Hz)
+  stft_window_lengths: [64, 128, 256, 512]
+
+  # Morphological loss: fallback half-window for PQRST landmarks (HR samples)
+  # Used when annotations carry only positions (no per-landmark window sizes).
+  # 25 samples × 2ms at 500 Hz = 50 ms window — covers most morphological features.
+  morphological_half_window: 25
+
+
+# ── Augmentations (Phase A contrastive learning, Table 3 PDF) ───────────────
+# p: probability of applying each augmentation per view
+#
+# Curriculum augmentation: strength ramps 0→1 over the first
+# curriculum_ramp_epochs epochs via a cosine schedule (smooth at both ends).
+# Set to 0 to disable and use full-intensity from epoch 0.
+
+augmentations:
+  curriculum_ramp_epochs: 20    # 0 = disabled (full strength from epoch 0)
+  gaussian_noise:
+    p: 0.7
+    snr_db_min: 32.0         # milder noise floor to keep views ECG-like
+    snr_db_max: 45.0         # upper bound SNR in dB
+
+  amplitude_scaling:
+    p: 0.7
+    scale_min: 0.85          # narrower scaling band to preserve morphology
+    scale_max: 1.15
+
+  baseline_wander:
+    p: 0.4
+    freq_min: 0.05           # Hz
+    freq_max: 0.8            # Hz
+    amplitude_frac: 0.06     # fraction of signal std
+
+  powerline_noise:
+    p: 0.3
+    freq: 50.0               # Hz (configurable for 60 Hz grids)
+    amplitude_frac: 0.02     # gentler corruption, less dominant sinusoid
+
+  segment_masking:
+    p: 0.25
+    max_mask_frac: 0.04      # short local removal, less flat-line artefact
+
+  time_warping:
+    p: 0.2
+    warp_frac: 0.02          # ±2% maximum time displacement
+    n_knots: 4               # interior control points for displacement spline

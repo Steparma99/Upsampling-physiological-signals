@@ -10,3 +10,6 @@ matplotlib>=3.7
 # Phase 2 — pre-training
 torch>=2.2
 omegaconf>=2.3
+
+# ECG analysis
+neurokit2>=0.2

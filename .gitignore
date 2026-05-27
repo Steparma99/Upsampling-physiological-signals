@@ -1,19 +1,137 @@
-# All the useless files
+# =============================================================================
+# ECG Super-Resolution Pipeline — .gitignore
+#
+# Tracked on GitHub (stretto necessario):
+#   src/          model code, data pipeline, losses, training loops, metrics
+#   scripts/      train_phase_a.py, train_phase_b.py, evaluate.py
+#   tests/        test_dimensions.py, test_dataset.py, conftest.py
+#   configs/      default.yaml
+#   README.md
+#   requirements.txt
+# =============================================================================
 
-# Ignore Claude's internal files
-.claude/
 
-# Ignore VSCode workspace settings and extensions
-.vscode/
-
-# Ignore the raw PTB-XL dataset directory
-ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3/
-
-# Ignore the UPSAMPLING virtual environment directory
+# ── Virtual environments ──────────────────────────────────────────────────────
 UPSAMPLING/
+venv/
+.venv/
+env/
+.env/
 
-# Ignore the Claude project instructions file
+
+# ── Dataset (grandi file binari, non vanno su GitHub) ────────────────────────
+ptb-xl-*/
+data/
+*.h5
+*.hdf5
+*.dat
+*.hea
+*.atr
+*.mat
+*.wfdb
+*.edf
+*.csv.gz
+
+
+# ── Training outputs (checkpoint, pesi, log) ─────────────────────────────────
+runs/
+outputs/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+
+# ── W&B (Weights & Biases) ────────────────────────────────────────────────────
+wandb/
+.wandb/
+
+
+# ── Python cache ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.so
+.Python
+
+
+# ── Build e packaging ─────────────────────────────────────────────────────────
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+MANIFEST
+
+
+# ── Test e coverage ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.coveragerc
+.tox/
+
+
+# ── Jupyter notebooks (locali, non utili per la pipeline) ────────────────────
+*.ipynb
+.ipynb_checkpoints/
+
+
+# ── Log e profiling ───────────────────────────────────────────────────────────
+*.log
+logs/
+*.prof
+*.lprof
+*.perf
+
+
+# ── Plot e figure (generate a runtime, non da tracciare) ─────────────────────
+plots/
+figures/
+*.png
+*.pdf
+*.svg
+*.eps
+
+
+# ── IDE e editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.orig
+.spyproject/
+.spyderproject/
+
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+
+# ── Documentazione e note locali ─────────────────────────────────────────────
+STRUCTURAL_REVIEW.md
+project_structure_v2.md
+docs/
+notebooks/
+
+
+# ── Claude (file interni dell'assistente) ─────────────────────────────────────
+.claude/
 CLAUDE.md
 
-# Ignore the structural review document
-STRUCTURAL_REVIEW.md
+
+# ── Phase 1 (vecchia struttura, rimossa) ─────────────────────────────────────
+phase1_dataset_preparation/
